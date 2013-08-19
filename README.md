@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/cloudfoundry/gorouter.png)](https://travis-ci.org/cloudfoundry/gorouter)
+[![Build Status](https://travis-ci.org/X-Plat/gorouter.png)](https://travis-ci.org/X-Plat/gorouter)
 
 # gorouter
 
