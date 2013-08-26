@@ -8,7 +8,7 @@ import (
 )
 
 func LocalIP() (string, error) {
-	addr, err := net.ResolveUDPAddr("udp", "1.2.3.4:1")
+	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:1")
 	if err != nil {
 		return "", err
 	}
