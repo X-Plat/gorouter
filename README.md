@@ -30,22 +30,48 @@ standalone environment.
 
 ### Setup
 
-```
-git clone https://github.com/cloudfoundry/gorouter.git
-cd gorouter
-git submodule update --init
-./bin/go install router/router
+```bash
+export GOPATH=~/go # or wherever
+export PATH=$GOPATH/bin:$PATH
+
+cd $GOPATH
+
+mkdir -p src/github.com/cloudfoundry
+(
+  cd src/github.com/cloudfoundry
+  git clone https://github.com/cloudfoundry/gorouter.git
+)
+
+go get -v ./src/github.com/cloudfoundry/gorouter/...
+
 gem install nats
+```
+
+### Running Tests
+
+We are using Gocheck, to run tests
+
+```
+go env
+go get -v ./...
+go build -v ./...
+go test -v ./...
+
+# just run tests whose names match Registry
+go test -v ./... -gocheck.f=Registry
+
+# run the tests for only the registry package
+go test -v ./registry
 ```
 
 ### Start
 
-```
+```bash
 # Start NATS server in daemon mode
 nats-server -d
 
 # Start gorouter
-./bin/router
+router
 ```
 
 ### Usage
@@ -148,11 +174,6 @@ Examples: the router can't bind to its TCP port, a CF component has published in
 * `info`, `debug` - An expected event has occurred. Examples: a new CF component was registered with the router, the router has begun
 to prune routes for stale droplets.
 
-## Notes
+## Contributing
 
-* 03/05/13: Code is now used on CloudFoundry.com.
-
-* 1/25/13: The code in this repository has not yet been used on CloudFoundry.com.
-
-* 1/25/13: While this implementation can easily support WebSocket
-  connections it does not yet.
+Please read the [contributors' guide](https://github.com/cloudfoundry/gorouter/blob/master/CONTRIBUTING.md)
