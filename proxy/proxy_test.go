@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"net/url"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,6 +63,7 @@ func (x *httpConn) ReadRequest() (*http.Request, string) {
 func (x *httpConn) NewRequest(method, urlStr string, body io.Reader) *http.Request {
 	req, err := http.NewRequest(method, urlStr, body)
 	x.c.Assert(err, IsNil)
+	req.URL = &url.URL{Host: req.URL.Host, Opaque: urlStr}
 	return req
 }
 
@@ -536,6 +538,7 @@ func (s *ProxySuite) TestStatusNoContentHasNoTransferEncodingInResponse(c *C) {
 	x := s.DialProxy(c)
 
 	req := x.NewRequest("GET", "/", nil)
+
 	req.Header.Set("Connection", "close")
 	req.Host = "not-modified"
 	x.WriteRequest(req)
@@ -544,6 +547,24 @@ func (s *ProxySuite) TestStatusNoContentHasNoTransferEncodingInResponse(c *C) {
 	fmt.Printf("response: %#v\n", resp)
 	c.Check(resp.StatusCode, Equals, http.StatusNoContent)
 	c.Check(resp.TransferEncoding, IsNil)
+}
+
+func (s *ProxySuite) TestRequestIsOkWithEncodedString(c *C) {
+	s.RegisterHandler(c, "encoding", func(x *httpConn) {
+		x.CheckLine("GET /hello%2Bworld?inline-depth=1 HTTP/1.1")
+		resp := newResponse(http.StatusOK)
+		x.WriteResponse(resp)
+		x.Close()
+	})
+
+	x := s.DialProxy(c)
+
+	req := x.NewRequest("GET", "/hello%2Bworld?inline-depth=1", nil)
+	req.Host = "encoding"
+	x.WriteRequest(req)
+	resp, _ := x.ReadResponse()
+	fmt.Printf("response: %#v\n", resp)
+	c.Check(resp.StatusCode, Equals, http.StatusOK)
 }
 
 func (s *ProxySuite) TestRequestTerminatesWhenResponseTakesTooLong(c *C) {
