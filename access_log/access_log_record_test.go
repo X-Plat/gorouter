@@ -13,8 +13,8 @@ type AccessLogRecordSuite struct{}
 
 var _ = Suite(&AccessLogRecordSuite{})
 
-func (s *AccessLogRecordSuite) TestMakeRecordWithAllValues(c *C) {
-	record := AccessLogRecord{
+func CompleteAccessLogRecord() AccessLogRecord {
+    return AccessLogRecord{
 		Request: &http.Request{
 			Host: "FakeRequestHost",
 			Method: "FakeRequestMethod",
@@ -38,6 +38,11 @@ func (s *AccessLogRecordSuite) TestMakeRecordWithAllValues(c *C) {
 		StartedAt: time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC),
 		FinishedAt: time.Date(2000, time.January, 1, 0, 1, 0, 0, time.UTC),
 	}
+}
+
+
+func (s *AccessLogRecordSuite) TestMakeRecordWithAllValues(c *C) {
+	record := CompleteAccessLogRecord()
 
 	recordString := "FakeRequestHost - " +
 			"[01/01/2000:00:00:00 +0000] " +
@@ -83,4 +88,24 @@ func (s *AccessLogRecordSuite) TestMakeRecordWithValuesMissing(c *C) {
 			"app_id:MissingRouteEndpointApplicationId\n"
 
 	c.Assert(record.makeRecord().String(), Equals, recordString)
+}
+
+func (s *AccessLogRecordSuite) TestEmit(c *C) {
+	record := CompleteAccessLogRecord()
+
+	recordString := record.makeRecord().String()
+
+	emit := NewMockEmitter()
+
+	record.Emit(emit)
+	c.Assert(emit.message, Equals, recordString)
+}
+
+func (s *AccessLogRecordSuite) TestEmitWithRouteEndpointMissing(c *C) {
+	record := AccessLogRecord{	}
+
+	emit := NewMockEmitter()
+
+	record.Emit(emit)
+	c.Assert(emit.emitted, Equals, false)
 }

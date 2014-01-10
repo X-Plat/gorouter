@@ -2,8 +2,11 @@ package access_log
 
 import (
 	"github.com/cloudfoundry/gorouter/route"
+	"github.com/cloudfoundry/gorouter/test_util"
 	"github.com/cloudfoundry/loggregatorlib/logmessage"
+
 	. "launchpad.net/gocheck"
+
 	"net/http"
 	"net/url"
 	"runtime"
@@ -55,53 +58,63 @@ func (s *AccessLoggerSuite) CreateAccessLogRecord() *AccessLogRecord {
 	return &r
 }
 
-type fakeFile struct {
-	payload []byte
-}
-
-func (f *fakeFile) Write(data []byte) (int, error) {
-	f.payload = data
-	return 12, nil
-}
-
 type mockEmitter struct {
 	emitted bool
 	appId   string
 	message string
+	done    chan bool
 }
 
 func (m *mockEmitter) Emit(appid, message string) {
 	m.emitted = true
 	m.appId = appid
 	m.message = message
+	m.done <- true
 }
 
 func (m *mockEmitter) EmitError(appid, message string) {
-	
 }
 
 func (m *mockEmitter) EmitLogMessage(l *logmessage.LogMessage) {
+}
 
+func NewMockEmitter() *mockEmitter {
+	return &mockEmitter{
+		emitted: false,
+		done: make(chan bool, 1),
+	}
 }
 
 func (s *AccessLoggerSuite) TestEmittingOfLogRecords(c *C) {
 	accessLogger := NewFileAndLoggregatorAccessLogger(nil, "localhost:9843", "secret", 42)
-	testEmitter := &mockEmitter{emitted: false}
+	testEmitter := NewMockEmitter()
 	accessLogger.emitter = testEmitter
 
 	accessLogger.Log(*s.CreateAccessLogRecord())
 	go accessLogger.Run()
 	runtime.Gosched()
 
-	c.Check(testEmitter.emitted, Equals, true)
-	c.Check(testEmitter.appId, Equals, "my_awesome_id")
-	c.Check(testEmitter.message, Matches, "^.*foo.bar.*\n")
+	timeout := make(chan bool, 1)
+	go func() {
+		time.Sleep(1*time.Second)
+		timeout <- true
+	}()
+
+	select {
+	case <-testEmitter.done:
+			c.Check(testEmitter.emitted, Equals, true)
+			c.Check(testEmitter.appId, Equals, "my_awesome_id")
+			c.Check(testEmitter.message, Matches, "^.*foo.bar.*\n")
+	case <-timeout:
+			c.FailNow()
+	}
+
 	accessLogger.Stop()
 }
 
 func (s *AccessLoggerSuite) TestNotEmittingLogRecordsWithNoAppId(c *C) {
 	accessLogger := NewFileAndLoggregatorAccessLogger(nil, "localhost:9843", "secret", 42)
-	testEmitter := &mockEmitter{emitted: false}
+	testEmitter := NewMockEmitter()
 	accessLogger.emitter = testEmitter
 
 	routeEndpoint := &route.Endpoint{
@@ -121,7 +134,7 @@ func (s *AccessLoggerSuite) TestNotEmittingLogRecordsWithNoAppId(c *C) {
 }
 
 func (s *AccessLoggerSuite) TestWritingOfLogRecordsToTheFile(c *C) {
-	var fakeFile = new(fakeFile)
+	var fakeFile = new(test_util.FakeFile)
 
 	accessLogger := NewFileAndLoggregatorAccessLogger(fakeFile, "localhost:9843", "secret", 42)
 
@@ -129,7 +142,7 @@ func (s *AccessLoggerSuite) TestWritingOfLogRecordsToTheFile(c *C) {
 	go accessLogger.Run()
 	runtime.Gosched()
 
-	c.Check(string(fakeFile.payload), Matches, "^.*foo.bar.*\n")
+	c.Check(string(fakeFile.Payload), Matches, "^.*foo.bar.*\n")
 	accessLogger.Stop()
 }
 
