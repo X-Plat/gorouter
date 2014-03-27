@@ -40,7 +40,7 @@
 		},
 		{
 			"ImportPath": "github.com/cloudfoundry/yagnats",
-			"Rev": "e039737afcd17e94e2f411a9d9f2056fd4d99fe7"
+			"Rev": "333bc02013f26f06aaec4af0bdd8277270d30545"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
