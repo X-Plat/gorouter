@@ -1,8 +1,9 @@
 package main
 
 import (
-	"net/url"
-
+	"github.com/apcera/nats"
+	cf_debug_server "github.com/cloudfoundry-incubator/cf-debug-server"
+	"github.com/cloudfoundry/dropsonde"
 	"github.com/cloudfoundry/gorouter/access_log"
 	vcap "github.com/cloudfoundry/gorouter/common"
 	"github.com/cloudfoundry/gorouter/config"
@@ -14,7 +15,6 @@ import (
 	"github.com/cloudfoundry/yagnats"
 
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
@@ -34,9 +34,16 @@ func main() {
 	c := config.DefaultConfig()
 	logCounter := vcap.NewLogCounter()
 	InitLoggerFromConfig(c, logCounter)
+	logger := steno.NewLogger("router.main")
 
 	if configFile != "" {
 		c = config.InitConfigFromFile(configFile)
+	}
+
+	err := dropsonde.Initialize(c.Logging.MetronAddress, c.Logging.JobName)
+	if err != nil {
+		logger.Errorf("Dropsonde failed to initialize: %s", err.Error())
+		os.Exit(1)
 	}
 
 	// setup number of procs
@@ -44,25 +51,20 @@ func main() {
 		runtime.GOMAXPROCS(c.GoMaxProcs)
 	}
 
-	InitLoggerFromConfig(c, logCounter)
-	logger := steno.NewLogger("router.main")
-
-	natsMembers := make([]string, len(c.Nats))
-	for _, info := range c.Nats {
-		uri := url.URL{
-			Scheme: "nats",
-			User:   url.UserPassword(info.User, info.Pass),
-			Host:   fmt.Sprintf("%s:%d", info.Host, info.Port),
-		}
-		natsMembers = append(natsMembers, uri.String())
+	if c.DebugAddr != "" {
+		cf_debug_server.Run(c.DebugAddr)
 	}
-	natsClient := yagnats.NewApceraClientWrapper(natsMembers)
 
-	err := natsClient.Connect()
-
+	natsServers := c.NatsServers()
+	natsClient, err := yagnats.Connect(natsServers)
 	if err != nil {
 		logger.Fatalf("Error connecting to NATS: %s\n", err)
 	}
+
+	natsClient.AddClosedCB(func(conn *nats.Conn) {
+		logger.Errorf("Close on NATS client. nats.Conn: %+v", *conn)
+		os.Exit(1)
+	})
 
 	registry := rregistry.NewRouteRegistry(c, natsClient)
 
@@ -80,6 +82,7 @@ func main() {
 		Registry:        registry,
 		Reporter:        varz,
 		AccessLogger:    accessLogger,
+		SecureCookies:   c.SecureCookies,
 	}
 	p := proxy.NewProxy(args)
 

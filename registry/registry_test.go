@@ -15,7 +15,7 @@ import (
 
 var _ = Describe("RouteRegistry", func() {
 	var r *RouteRegistry
-	var messageBus *fakeyagnats.FakeApceraWrapper
+	var messageBus *fakeyagnats.FakeNATSConn
 
 	var fooEndpoint, barEndpoint, bar2Endpoint *route.Endpoint
 	var configObj *config.Config
@@ -25,25 +25,25 @@ var _ = Describe("RouteRegistry", func() {
 		configObj.PruneStaleDropletsInterval = 50 * time.Millisecond
 		configObj.DropletStaleThreshold = 10 * time.Millisecond
 
-		messageBus = fakeyagnats.NewApceraClientWrapper()
+		messageBus = fakeyagnats.Connect()
 		r = NewRouteRegistry(configObj, messageBus)
 		fooEndpoint = route.NewEndpoint("12345", "192.168.1.1", 1234,
 			"id1", map[string]string{
 				"runtime":   "ruby18",
 				"framework": "sinatra",
-			})
+			}, -1)
 
 		barEndpoint = route.NewEndpoint("54321", "192.168.1.2", 4321,
 			"id2", map[string]string{
 				"runtime":   "javascript",
 				"framework": "node",
-			})
+			}, -1)
 
 		bar2Endpoint = route.NewEndpoint("54321", "192.168.1.3", 1234,
 			"id3", map[string]string{
 				"runtime":   "javascript",
 				"framework": "node",
-			})
+			}, -1)
 	})
 
 	Context("Register", func() {
@@ -76,8 +76,8 @@ var _ = Describe("RouteRegistry", func() {
 		})
 
 		It("ignores case", func() {
-			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
-			m2 := route.NewEndpoint("", "192.168.1.1", 1235, "", nil)
+			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
+			m2 := route.NewEndpoint("", "192.168.1.1", 1235, "", nil, -1)
 
 			r.Register("foo", m1)
 			r.Register("FOO", m2)
@@ -86,8 +86,8 @@ var _ = Describe("RouteRegistry", func() {
 		})
 
 		It("allows multiple uris for the same endpoint", func() {
-			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
-			m2 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
+			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
+			m2 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
 
 			r.Register("foo", m1)
 			r.Register("bar", m2)
@@ -121,8 +121,8 @@ var _ = Describe("RouteRegistry", func() {
 		})
 
 		It("ignores uri case and matches endpoint", func() {
-			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
-			m2 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
+			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
+			m2 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
 
 			r.Register("foo", m1)
 			r.Unregister("FOO", m2)
@@ -131,8 +131,8 @@ var _ = Describe("RouteRegistry", func() {
 		})
 
 		It("removes the specific url/endpoint combo", func() {
-			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
-			m2 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
+			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
+			m2 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
 
 			r.Register("foo", m1)
 			r.Register("bar", m1)
@@ -145,7 +145,7 @@ var _ = Describe("RouteRegistry", func() {
 
 	Context("Lookup", func() {
 		It("case insensitive lookup", func() {
-			m := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
+			m := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
 
 			r.Register("foo", m)
 
@@ -158,8 +158,8 @@ var _ = Describe("RouteRegistry", func() {
 		})
 
 		It("selects one of the routes", func() {
-			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
-			m2 := route.NewEndpoint("", "192.168.1.1", 1235, "", nil)
+			m1 := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
+			m2 := route.NewEndpoint("", "192.168.1.1", 1235, "", nil, -1)
 
 			r.Register("bar", m1)
 			r.Register("barr", m1)
@@ -201,7 +201,7 @@ var _ = Describe("RouteRegistry", func() {
 		})
 
 		It("skips fresh droplets", func() {
-			endpoint := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
+			endpoint := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
 
 			r.Register("foo", endpoint)
 			r.Register("bar", endpoint)
@@ -228,24 +228,6 @@ var _ = Describe("RouteRegistry", func() {
 			Ω(p).Should(BeNil())
 		})
 
-		It("disables pruning when NATS is unavailable", func() {
-			r.Register("foo", fooEndpoint)
-			r.Register("fooo", fooEndpoint)
-
-			r.Register("bar", barEndpoint)
-			r.Register("baar", barEndpoint)
-
-			Ω(r.NumUris()).To(Equal(4))
-			Ω(r.NumEndpoints()).To(Equal(2))
-
-			messageBus.OnPing(func() bool { return false })
-			r.StartPruningCycle()
-			time.Sleep(configObj.PruneStaleDropletsInterval + 10*time.Millisecond)
-
-			Ω(r.NumUris()).To(Equal(4))
-			Ω(r.NumEndpoints()).To(Equal(2))
-		})
-
 		It("does not block when pruning", func() {
 			// when pruning stale droplets,
 			// and the stale check takes a while,
@@ -255,19 +237,9 @@ var _ = Describe("RouteRegistry", func() {
 			r.Register("foo", fooEndpoint)
 			r.Register("fooo", fooEndpoint)
 
-			barrier := make(chan struct{})
-
-			messageBus.OnPing(func() bool {
-				barrier <- struct{}{}
-				<-barrier
-				return false
-			})
-
 			r.StartPruningCycle()
-			<-barrier
 
 			p := r.Lookup("foo")
-			barrier <- struct{}{}
 			Ω(p).ShouldNot(BeNil())
 		})
 	})
@@ -307,7 +279,7 @@ var _ = Describe("RouteRegistry", func() {
 	})
 
 	It("marshals", func() {
-		m := route.NewEndpoint("", "192.168.1.1", 1234, "", nil)
+		m := route.NewEndpoint("", "192.168.1.1", 1234, "", nil, -1)
 		r.Register("foo", m)
 
 		marshalled, err := json.Marshal(r)

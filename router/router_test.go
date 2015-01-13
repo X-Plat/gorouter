@@ -2,6 +2,8 @@ package router_test
 
 import (
 	"github.com/apcera/nats"
+	"github.com/cloudfoundry/dropsonde"
+	"github.com/cloudfoundry/dropsonde/emitter/fake"
 	"github.com/cloudfoundry/gorouter/access_log"
 	vcap "github.com/cloudfoundry/gorouter/common"
 	cfg "github.com/cloudfoundry/gorouter/config"
@@ -31,17 +33,21 @@ import (
 var _ = Describe("Router", func() {
 
 	var natsRunner *natsrunner.NATSRunner
+	var natsPort uint16
 	var config *cfg.Config
 
-	var mbusClient yagnats.ApceraWrapperNATSClient
+	var mbusClient yagnats.NATSConn
 	var registry *rregistry.RouteRegistry
 	var varz vvarz.Varz
 	var router *Router
 
 	BeforeEach(func() {
-		natsPort := test_util.NextAvailPort()
+		natsPort = test_util.NextAvailPort()
 		natsRunner = natsrunner.NewNATSRunner(int(natsPort))
 		natsRunner.Start()
+
+		fakeEmitter := fake.NewFakeEventEmitter("fake")
+		dropsonde.InitializeWithEmitter(fakeEmitter)
 
 		proxyPort := test_util.NextAvailPort()
 		statusPort := test_util.NextAvailPort()
@@ -84,7 +90,7 @@ var _ = Describe("Router", func() {
 				response <- msg.Data
 			})
 
-			mbusClient.PublishWithReplyTo("router.greet", "router.greet.test.response", []byte{})
+			mbusClient.PublishRequest("router.greet", "router.greet.test.response", []byte{})
 
 			var msg []byte
 			Eventually(response, 1).Should(Receive(&msg))
@@ -105,7 +111,7 @@ var _ = Describe("Router", func() {
 				sig <- component
 			})
 
-			mbusClient.PublishWithReplyTo(
+			mbusClient.PublishRequest(
 				"vcap.component.discover",
 				"vcap.component.discover.test.response",
 				[]byte{},
@@ -141,15 +147,21 @@ var _ = Describe("Router", func() {
 
 		It("sends start on a nats connect", func() {
 			started := make(chan bool)
+			cb := make(chan bool)
 
 			mbusClient.Subscribe("router.start", func(*nats.Msg) {
 				started <- true
+			})
+
+			mbusClient.AddReconnectedCB(func(_ *nats.Conn) {
+				cb <- true
 			})
 
 			natsRunner.Stop()
 			natsRunner.Start()
 
 			Eventually(started, 4).Should(Receive())
+			Eventually(cb, 4).Should(Receive())
 		})
 	})
 

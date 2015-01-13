@@ -2,7 +2,7 @@ package router
 
 import (
 	"github.com/apcera/nats"
-	"github.com/cloudfoundry/dropsonde/autowire"
+	"github.com/cloudfoundry/dropsonde"
 	vcap "github.com/cloudfoundry/gorouter/common"
 	"github.com/cloudfoundry/gorouter/config"
 	"github.com/cloudfoundry/gorouter/proxy"
@@ -10,6 +10,7 @@ import (
 	"github.com/cloudfoundry/gorouter/varz"
 	steno "github.com/cloudfoundry/gosteno"
 	"github.com/cloudfoundry/yagnats"
+	"github.com/pivotal-golang/localip"
 
 	"bytes"
 	"compress/zlib"
@@ -26,7 +27,7 @@ var DrainTimeout = errors.New("router: Drain timeout")
 type Router struct {
 	config     *config.Config
 	proxy      proxy.Proxy
-	mbusClient yagnats.ApceraWrapperNATSClient
+	mbusClient yagnats.NATSConn
 	registry   *registry.RouteRegistry
 	varz       varz.Varz
 	component  *vcap.VcapComponent
@@ -36,7 +37,7 @@ type Router struct {
 	logger *steno.Logger
 }
 
-func NewRouter(cfg *config.Config, p proxy.Proxy, mbusClient yagnats.ApceraWrapperNATSClient, r *registry.RouteRegistry, v varz.Varz,
+func NewRouter(cfg *config.Config, p proxy.Proxy, mbusClient yagnats.NATSConn, r *registry.RouteRegistry, v varz.Varz,
 	logCounter *vcap.LogCounter) (*Router, error) {
 
 	var host string
@@ -96,8 +97,8 @@ func (r *Router) Run() <-chan error {
 	// Kickstart sending start messages
 	r.SendStartMessage()
 
-	// Send start again on reconnect
-	r.mbusClient.AddReconnectedCB(func(_ yagnats.ApceraWrapperNATSClient) {
+	r.mbusClient.AddReconnectedCB(func(conn *nats.Conn) {
+		r.logger.Infof("Reconnecting to NATS server %s...", conn.Opts.Url)
 		r.SendStartMessage()
 	})
 
@@ -112,7 +113,7 @@ func (r *Router) Run() <-chan error {
 	}
 
 	server := http.Server{
-		Handler: autowire.InstrumentedHandler(r.proxy),
+		Handler: dropsonde.InstrumentedHandler(r.proxy),
 	}
 
 	errChan := make(chan error, 1)
@@ -247,7 +248,7 @@ func (r *Router) flushApps(t time.Time) {
 }
 
 func (r *Router) greetMessage() ([]byte, error) {
-	host, err := vcap.LocalIP()
+	host, err := localip.LocalIP()
 	if err != nil {
 		return nil, err
 	}

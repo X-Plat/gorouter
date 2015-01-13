@@ -1,4 +1,4 @@
-// Copyright 2012 Apcera Inc. All rights reserved.
+// Copyright 2012-2014 Apcera Inc. All rights reserved.
 // +build ignore
 
 package main
@@ -8,6 +8,7 @@ import (
 	"log"
 	"runtime"
 	"strings"
+
 	"github.com/apcera/nats"
 )
 
@@ -39,7 +40,7 @@ func main() {
 	opts := nats.DefaultOptions
 	opts.Servers = strings.Split(*urls, ",")
 	for i, s := range opts.Servers {
-    		opts.Servers[i] = strings.Trim(s, " ")
+		opts.Servers[i] = strings.Trim(s, " ")
 	}
 	opts.Secure = *ssl
 

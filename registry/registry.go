@@ -22,13 +22,13 @@ type RouteRegistry struct {
 	pruneStaleDropletsInterval time.Duration
 	dropletStaleThreshold      time.Duration
 
-	messageBus yagnats.ApceraWrapperNATSClient
+	messageBus yagnats.NATSConn
 
 	ticker           *time.Ticker
 	timeOfLastUpdate time.Time
 }
 
-func NewRouteRegistry(c *config.Config, mbus yagnats.ApceraWrapperNATSClient) *RouteRegistry {
+func NewRouteRegistry(c *config.Config, mbus yagnats.NATSConn) *RouteRegistry {
 	r := &RouteRegistry{}
 
 	r.logger = steno.NewLogger("router.registry")
@@ -100,14 +100,7 @@ func (r *RouteRegistry) StartPruningCycle() {
 				select {
 				case <-r.ticker.C:
 					r.logger.Debug("Start to check and prune stale droplets")
-					if r.isStateStale() {
-						r.logger.Info("State is stale; NOT pruning")
-						r.pauseStaleTracker()
-						break
-					}
-
 					r.pruneStaleDroplets()
-
 				}
 			}
 		}()
@@ -159,15 +152,10 @@ func (r *RouteRegistry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.byUri)
 }
 
-func (r *RouteRegistry) isStateStale() bool {
-	return !r.messageBus.Ping()
-}
-
 func (r *RouteRegistry) pruneStaleDroplets() {
 	r.Lock()
-	pruneTime := time.Now().Add(-r.dropletStaleThreshold)
 	for k, pool := range r.byUri {
-		pool.PruneBefore(pruneTime)
+		pool.PruneEndpoints(r.dropletStaleThreshold)
 		if pool.IsEmpty() {
 			delete(r.byUri, k)
 		}

@@ -71,30 +71,27 @@ nats:
 			Ω(config.Nats[0].Pass).To(Equal("pass"))
 		})
 
+		It("sets default logging configs", func() {
+			Ω(config.Logging.File).To(Equal(""))
+			Ω(config.Logging.Syslog).To(Equal(""))
+			Ω(config.Logging.Level).To(Equal("debug"))
+			Ω(config.Logging.LoggregatorEnabled).To(Equal(false))
+		})
+
 		It("sets logging config", func() {
 			var b = []byte(`
 logging:
   file: /tmp/file
   syslog: syslog
   level: debug2
+  loggregator_enabled: true
 `)
 			config.Initialize(b)
 
 			Ω(config.Logging.File).To(Equal("/tmp/file"))
 			Ω(config.Logging.Syslog).To(Equal("syslog"))
 			Ω(config.Logging.Level).To(Equal("debug2"))
-		})
-
-		It("configures loggreggator", func() {
-			var b = []byte(`
-loggregatorConfig:
-  url: 10.10.16.14:3456
-`)
-
-			config.Initialize(b)
-
-			Ω(config.LoggregatorConfig.Url).To(Equal("10.10.16.14:3456"))
-
+			Ω(config.Logging.LoggregatorEnabled).To(Equal(true))
 		})
 
 		It("sets the rest of config", func() {
@@ -125,6 +122,7 @@ prune_stale_droplets_interval: 2
 droplet_stale_threshold: 30
 publish_active_apps_interval: 4
 start_response_delay_interval: 15
+secure_cookies: true
 `)
 
 			config.Initialize(b)
@@ -135,6 +133,7 @@ start_response_delay_interval: 15
 			Ω(config.DropletStaleThreshold).To(Equal(30 * time.Second))
 			Ω(config.PublishActiveAppsInterval).To(Equal(4 * time.Second))
 			Ω(config.StartResponseDelayInterval).To(Equal(15 * time.Second))
+			Ω(config.SecureCookies).To(BeTrue())
 		})
 
 		Context("When StartResponseDelayInterval is greater than DropletStaleThreshold", func() {
@@ -149,6 +148,41 @@ start_response_delay_interval: 15
 
 				Ω(config.DropletStaleThreshold).To(Equal(15 * time.Second))
 				Ω(config.StartResponseDelayInterval).To(Equal(15 * time.Second))
+			})
+		})
+
+		Context("When secure cookies is set to false", func() {
+			It("set DropletStaleThreshold equal to StartResponseDelayInterval", func() {
+				var b = []byte(`
+secure_cookies: false
+`)
+
+				config.Initialize(b)
+				config.Process()
+
+				Ω(config.SecureCookies).To(BeFalse())
+			})
+		})
+
+		Describe("NatsServers", func() {
+			var b = []byte(`
+nats:
+  - host: remotehost
+    port: 4223
+    user: user
+    pass: pass
+  - host: remotehost2
+    port: 4223
+    user: user2
+    pass: pass2
+`)
+
+			It("returns a slice of of the configured NATS servers", func() {
+				config.Initialize(b)
+
+				natsServers := config.NatsServers()
+				Expect(natsServers[0]).To(Equal("nats://user:pass@remotehost:4223"))
+				Expect(natsServers[1]).To(Equal("nats://user2:pass2@remotehost2:4223"))
 			})
 		})
 
